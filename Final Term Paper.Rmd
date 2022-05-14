@@ -1,0 +1,124 @@
+---
+title: "Possible Employment Lock due to Romneycare Act in Massachusetts 2006"
+author: "Sonali"
+date: "12/05/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE, results = "hide")
+library(tidyverse)
+library(haven)
+library(Synth)
+library(SCtools)
+```
+
+## Abstract
+
+In this paper investigates as to whether Romneycare had any influence on employment lock. Employment lock in this context refers to the phenomena wherein employees stick to a job primarily because of its health insurance provisions. The paper gives a brief history of the scheme and then uses causal inference technique to support the conclusion with empirical evidence.
+
+## Overview of the Reform
+
+Romneycare was passed in June 2006 by the Massachusetts congress. This came up as an impending requirement due to the expiration of the waiver 1115. Upon execution this would reduce the basket of eligible persons for insurance coverage by Medicaid. Romneycare also mandated that those who don’t have any type of insurance will face a penalty. Moreover, employers were also penalized in the sense that they were expected to pay a contribute adequately towards insurance programs. The act also provided subsidies to low-income classes. 
+
+Romneycare is hailed for reduction in uninsured rate with one study finding 5.6% reduction. However, there was a lot of skepticism around these incentive-based premiums predicting that this would shrink the labor market. The portion of the workforce that worked merely to get insurance would now find it affordable and will prefer to move out of the workforce. In this paper I try to analyse this by looking at the movement from employed to self-employed industry classification of CPS. Since this was implemented only in Massachusetts, it serves as an appropriate use-case for synthetic controlling. For this paper particularly I have taken the class of workers that is Proprietorships as self-employment.  This class encompasses unincorporate self-employed workers. The incorporated self-employed workers are included in wage and salary employment amongst other classification. 
+
+## Data gathering
+
+Primary sources of data comprise 3 main survey databases: CPS, BLS and BRFSS. CPS provided information for health insurance coverage data in 3 categories – public, private and uninsured. From BLS I took the data of employed v/s unemployed over the years. The information on self-employment was achieved from a combination of CPS and BRFSS. Alongside I also pulled the data of personal income of these proprietors over the years. Intersection of all 3 datasets allowed me to do synthetic controlling from 1999-2019. However, to obtain better results one I would have preferred to get data for 10 more additional year. I am relatively satisfied in this context as the prior to the implementation year (i.e 2006) provides sufficient data to get a good fit from the control groups. 
+
+## Synthetic Controlling
+
+I first begin by putting all the years and states in the mix of control groups. From there on I tweak the control set for as long as I can get the smallest RMSPE. Incremental changes are done by looking at how the weight matrix changes between states. The to test the legitimacy of the model, a falsification test is performed wherein we choose an earlier treatment date and see what happens to the estimation. We lay the Masachusetts graph on to the control group graphs of 28 states. The p-value is defined as post RMSPE to pre RMSPE ratio. Then this ratio is ranked from smallest to highest. The main idea is that the treatment group should have one the least ratios and therefore a higher rank because then we can say that the treatment group has an extreme effect due to the policy that sets it apart from other states. This is done to comment on the statistical significance of the effect. 
+
+
+```{r}
+states_data <- read_csv("D:/UT/Causal Inference/Final paper/cps_data.csv") %>%
+  as.data.frame(.)
+
+dataprep_out <- dataprep(
+  foo = states_data,
+  predictors = c("emp","self-emp","unemp","pri_hi","pub_hi","uninsured","self-emp-inc"),
+  predictors.op = "mean",
+  time.predictors.prior = 1999:2006,
+  special.predictors = list(
+    list("emp", 1999:2000, "mean"),
+    list("self-emp", 2000:2004, "mean"),
+    list("unemp", 1999:2004, "mean"),
+    list("pri_hi", 1999:2003, "mean"),
+    list("pub_hi", 1999:2002, "mean"),
+    list("uninsured",2004:2004,"mean"),
+    list("self-emp-inc",2000:2001,"mean")),
+  dependent = "self-emp",
+  unit.variable = "statefip",
+  unit.names.variable = "state",
+  time.variable = "year",
+  treatment.identifier = 22,
+  controls.identifier = c(5,7,9,11,23:29,33:50),
+  time.optimize.ssr = 1999:2006,
+  time.plot = 1999:2019
+)
+
+synth_out <- synth(data.prep.obj = dataprep_out)
+
+path.plot(synth_out, dataprep_out)
+
+```
+
+What I first notice is that model has found a quite good fit using different weights of the control groups. But there is no significant jump around 2006 in the post-treatment universe. Similar view is given by the gaps in RMSPE. Any considerable divergence in RMSPE is missing in the post treatment years. 
+
+```{r}
+
+gaps.plot(synth_out, dataprep_out)
+```
+
+
+```{r}
+placebos <- generate.placebos(dataprep_out, synth_out, Sigf.ipop = 3)
+
+plot_placebos(placebos)
+
+```
+
+Looking at the placebo plot is not exciting either. Massachusetts has nicely merged with other states. 
+
+```{r}
+mspe.plot(placebos, discard.extreme = TRUE, mspe.limit = 1, plot.hist = TRUE)
+```
+
+The p-value is around 0.02 which tells us that the result is quite significant. Meaning that it is quite significant that the policy has not appreciative impact that led to employment lock. 
+
+
+However, an interesting observation is that most of the results that one would want to see in synthetic controlling for the treatment year occurs around 2015. It is not significant but the divergences cant be ignored. 
+
+
+```{r}
+synth_out$solution.w
+```
+
+## Future development 
+I strongly believe that more data would give more promising results and efficient weights. This would be especially useful if one wants to incorporate some machine learning techniques into this. Having done at least 15 modifications to the control group with trial and error does led me to think that there is still a better control set out there. Therefore, regularization methods like lasso or AIC may prove useful here to provide a more systematic solution to this step. 
+
+It may be prudent to look at if anything substantial happened in 2015 to affect health insurance dynamics in Massachusetts.
+
+## Other incentives to work 
+
+The model built with the given data scope in this paper predicts there was no effect of romneycare on self-employment (at least proprietorship employment) in Massachusetts. This goes to say that perhaps people have more incentive to be employed by others. Or more plainly that at least in Massachusetts the decision to be self-employed is not driven by the nature of insurance. 
+Since the model as done really well in imitating pre-treatment phase of Massachusetts using control groups, we can say that post treatment predictions are trustworthy. Moreover, the p-value also suggests this is a statistically significant prediction. 
+
+## Bibliography 
+
+Grady B.Roach, *Romneycare: A boon to Employment*, Dec 2017  
+
+Craig Garthwaite, Tal Gross, Matthew J. Notowidigdo, *PUBLIC HEALTH INSURANCE, LABOR SUPPLY, AND EMPLOYMENT LOCK*, July 2013  
+
+Casey B. Mulligan, *Is the Affordable Care Act Different from Romneycare? A Labor Economics Perspective*, Aug 2013  
+
+Scott Cunningham, *Causal Inference: The Mixtape, Chp 10 Synthetic Controlling*, Jan 2021  
+
+Current Population Survey(*CPS*)  
+
+Bureau of Labor Statistics(*BLS*)  
+
+Behavioral Risk Factor Surveillance System (*BRFSS*)  
+
